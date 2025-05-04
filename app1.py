@@ -50,58 +50,6 @@ def process_command():
     # Check if queryResult and intent are present
     if 'queryResult' not in data or 'intent' not in data['queryResult']:
         print("Missing queryResult or intent in request body.")
-        return jsonify({'fulfillmentText': "Erreur: Requête mal formée, queryResult ou intent manquant."}),  from flask import Flask, request, jsonify
-from flask_cors import CORS
-import firebase_admin
-from firebase_admin import credentials, db
-import traceback
-import os
-import json
-
-app = Flask(__name__)
-CORS(app)
-
-# Initialize Firebase Realtime Database
-try:
-    firebase_credentials = os.getenv("FIREBASE_CREDENTIALS")
-    if not firebase_credentials:
-        raise ValueError("FIREBASE_CREDENTIALS environment variable not set")
-
-    cred_dict = json.loads(firebase_credentials)
-    cred = credentials.Certificate(cred_dict)
-    firebase_admin.initialize_app(cred, {
-        'databaseURL': 'https://projet-fin-d-etude-4632f-default-rtdb.firebaseio.com/'
-    })
-    db_ref = db.reference('sensor_data')
-    print("Firebase Realtime Database initialized successfully.")
-except Exception as e:
-    print(f"Failed to initialize Firebase: {str(e)}")
-    db_ref = None
-
-# CO danger threshold (in ppm)
-CO_DANGER_THRESHOLD = 400
-
-@app.route('/')
-def home():
-    return "Flask app is running!"
-
-@app.route('/process_command', methods=['POST'])
-def process_command():
-    print("Received request at /process_command")
-    print("Request headers:", request.headers)
-    try:
-        data = request.get_json()
-        if data is None:
-            print("Invalid JSON payload received.")
-            return jsonify({'fulfillmentText': "Erreur: Payload JSON invalide."}), 400
-        print("Request body:", data)
-    except Exception as e:
-        print(f"Failed to parse JSON: {str(e)}")
-        return jsonify({'fulfillmentText': f"Erreur: Impossible de parser le JSON: {str(e)}"}), 400
-
-    # Check if queryResult and intent are present
-    if 'queryResult' not in data or 'intent' not in data['queryResult']:
-        print("Missing queryResult or intent in request body.")
         return jsonify({'fulfillmentText': "Erreur: Requête mal formée, queryResult ou intent manquant."}), 400
 
     intent = data['queryResult']['intent']['displayName']
