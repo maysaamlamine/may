@@ -9,7 +9,7 @@ import json
 app = Flask(__name__)
 CORS(app)
 
-# Initialisation de la base de données Firebase
+# Initialize Firebase Realtime Database
 try:
     firebase_credentials = os.getenv("FIREBASE_CREDENTIALS")
     if not firebase_credentials:
@@ -26,7 +26,8 @@ except Exception as e:
     print(f"Failed to initialize Firebase: {str(e)}")
     db_ref = None
 
-CO_DANGER_THRESHOLD = 400  # Seuil de danger pour le CO (en ppm)
+# CO danger threshold (in ppm)
+CO_DANGER_THRESHOLD = 400
 
 @app.route('/')
 def home():
@@ -49,6 +50,10 @@ def process_command():
     intent = data['queryResult']['intent']['displayName']
     print(f"Intent détectée : {intent}")
 
+    # Vérification de l'intention 'gpl'
+    if intent == 'gpl':
+        print("Intent 'gpl' reçue et traitée.")
+    
     # Gestion de l'intention par défaut (bienvenue)
     if intent == 'Default_Welcome_Intent':
         response = "Bonjour ! Je suis ici pour vous aider à surveiller les niveaux de CO, GPL, température et humidité. Posez-moi une question comme 'Quel est le niveau de CO ?' ou 'Quel est le niveau de GPL ?'."
@@ -141,6 +146,7 @@ def process_command():
 if __name__ == '__main__':
     port = int(os.getenv('PORT', 5000))
     app.run(debug=False, host='0.0.0.0', port=port)
+
 
 
 
