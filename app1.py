@@ -73,7 +73,7 @@ def process_command():
             print("No data found at 'sensor_data' path.")
             return jsonify({'fulfillmentText': "Désolé, je n'ai pas pu récupérer les données des capteurs."}), 200
 
-        print(f"Retrieved sensor data: {sensor_data_entries}")
+        print(f"Full sensor data entries: {sensor_data_entries}")
 
         # Convert to list of entries with timestamps
         entries = []
@@ -102,9 +102,27 @@ def process_command():
             print("No valid entries found with required fields.")
             return jsonify({'fulfillmentText': "Désolé, je n'ai pas pu récupérer les données des capteurs."}), 200
 
+        # Sort by timestamp to get the latest entry
         entries.sort(key=lambda x: x['data']['timestamp'], reverse=True)
         sensor_data = entries[0]['data']
         print(f"Latest sensor data: {sensor_data}")
+
+        # For 'temp' and 'hum', if latest entry lacks the required field, search others
+        if intent == 'temp' and sensor_data.get('temperature') is None:
+            print("Latest entry lacks temperature, searching other entries")
+            for entry in entries[1:]:
+                if entry['data'].get('temperature') is not None:
+                    sensor_data = entry['data']
+                    print(f"Found temperature in older entry: {sensor_data}")
+                    break
+        elif intent == 'hum' and sensor_data.get('humidity') is None:
+            print("Latest entry lacks humidity, searching other entries")
+            for entry in entries[1:]:
+                if entry['data'].get('humidity') is not None:
+                    sensor_data = entry['data']
+                    print(f"Found humidity in older entry: {sensor_data}")
+                    break
+
     except Exception as e:
         print(f"Failed to fetch data from Realtime Database: {str(e)}")
         print(traceback.format_exc())
