@@ -26,7 +26,7 @@ except Exception as e:
     print(f"Failed to initialize Firebase: {str(e)}")
     db_ref = None
 
-CO_DANGER_THRESHOLD = 400
+CO_DANGER_THRESHOLD = 400  # Seuil de danger pour le CO (en ppm)
 
 @app.route('/')
 def home():
@@ -49,10 +49,12 @@ def process_command():
     intent = data['queryResult']['intent']['displayName']
     print(f"Intent détectée : {intent}")
 
+    # Gestion de l'intention par défaut (bienvenue)
     if intent == 'Default_Welcome_Intent':
         response = "Bonjour ! Je suis ici pour vous aider à surveiller les niveaux de CO, GPL, température et humidité. Posez-moi une question comme 'Quel est le niveau de CO ?' ou 'Quel est le niveau de GPL ?'."
         return jsonify({'fulfillmentText': response}), 200
 
+    # Vérification de l'initialisation de Firebase
     if db_ref is None:
         return jsonify({'fulfillmentText': "Erreur: Base de données non initialisée."}), 500
 
@@ -61,11 +63,13 @@ def process_command():
         if not sensor_data_entries:
             return jsonify({'fulfillmentText': "Désolé, je n'ai pas pu récupérer les données des capteurs."}), 200
 
+        # Filtrage des données en fonction de l'intention
         entries = []
         for key, value in sensor_data_entries.items():
             if not isinstance(value, dict):
                 continue
 
+            # Collecte des données selon l'intention
             if intent == 'temp' and 'temperature' in value:
                 value['timestamp'] = value.get('timestamp', '1970-01-01T00:00:00Z')
                 entries.append({'key': key, 'data': value})
@@ -82,11 +86,11 @@ def process_command():
         if not entries:
             return jsonify({'fulfillmentText': "Désolé, je n'ai pas pu récupérer les données des capteurs."}), 200
 
-        # Trier les entrées par date
+        # Trier les entrées par date (timestamp)
         entries.sort(key=lambda x: x['data']['timestamp'], reverse=True)
         sensor_data = entries[0]['data']
 
-        # Recherche alternative si valeur manquante
+        # Recherche d'une valeur alternative si une donnée est manquante
         if intent == 'temp' and sensor_data.get('temperature') is None:
             for entry in entries[1:]:
                 if entry['data'].get('temperature') is not None:
@@ -107,13 +111,13 @@ def process_command():
         print(traceback.format_exc())
         return jsonify({'fulfillmentText': f"Erreur: Impossible de récupérer les données: {str(e)}"}), 500
 
-    # Extraction des données
+    # Extraction des données nécessaires
     co_level = sensor_data.get('mq7')
     gpl_level = sensor_data.get('mq5')
     temperature = sensor_data.get('temperature')
     humidity = sensor_data.get('humidity')
 
-    # Génération de la réponse
+    # Création de la réponse en fonction de l'intention
     if intent == 'get_co_level':
         response = f"Le niveau de CO actuel est de {co_level} ppm." if co_level is not None else "Désolé, la valeur de CO n'est pas disponible."
     elif intent == 'check_danger':
@@ -137,5 +141,6 @@ def process_command():
 if __name__ == '__main__':
     port = int(os.getenv('PORT', 5000))
     app.run(debug=False, host='0.0.0.0', port=port)
+
 
 
