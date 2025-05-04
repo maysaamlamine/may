@@ -9,7 +9,7 @@ import json
 app = Flask(__name__)
 CORS(app)
 
-# Global variable for Firebase reference
+# Référence globale à Firebase
 db_ref = None
 
 # Chargement des identifiants Firebase
@@ -34,14 +34,14 @@ try:
     print("Connexion à Firebase réussie.")
 
 except Exception as e:
-    print(f"❌ Erreur d'initialisation Firebase : {str(e)}")
+    print(f"Erreur d'initialisation Firebase : {str(e)}")
     print(traceback.format_exc())
 
-CO_DANGER_THRESHOLD = 400  # seuil de danger CO en ppm
+CO_DANGER_THRESHOLD = 400  # Seuil de danger du CO en ppm
 
 @app.route('/')
 def home():
-    return jsonify({"status": "✅ API Flask en fonctionnement."})
+    return jsonify({"status": "API Flask en fonctionnement."})
 
 @app.route('/process_command', methods=['POST'])
 def process_command():
@@ -53,7 +53,7 @@ def process_command():
         return jsonify({"error": f"Erreur de parsing JSON : {str(e)}"}), 400
 
     intent = data['queryResult']['intent']['displayName']
-    print(f"Received intent: {intent}")  # Debug log
+    print(f"Intent reçu : {intent}")
 
     if db_ref is None:
         return jsonify({"fulfillmentText": "Erreur : la connexion Firebase a échoué."}), 500
@@ -71,10 +71,9 @@ def process_command():
         if not entries:
             return jsonify({"fulfillmentText": "Désolé, aucune donnée exploitable trouvée dans Firebase."})
 
-        # Sort by timestamp (handle missing or invalid timestamps)
         entries.sort(key=lambda x: x['data'].get('timestamp', '1970-01-01T00:00:00Z'), reverse=True)
         latest_data = entries[0]['data']
-        print(f"Latest data: {latest_data}")  # Debug log
+        print(f"Dernières données : {latest_data}")
 
     except Exception as e:
         print(traceback.format_exc())
@@ -84,26 +83,26 @@ def process_command():
     temperature = latest_data.get('temperature')
     humidity = latest_data.get('humidity')
 
-    if intent == 'get_co_level':
+    if intent == 'Get CO Level':
         response = f"Le niveau de CO actuel est de {co_level} ppm."
-    elif intent == 'check_danger':
+    elif intent == 'Check Danger':
         if co_level > CO_DANGER_THRESHOLD:
-            response = f"Alerte ! Le niveau de CO est de {co_level} ppm, ce qui est dangereux."
+            response = f"Alerte. Le niveau de CO est de {co_level} ppm, ce qui est dangereux."
         else:
             response = f"Le niveau de CO est de {co_level} ppm, aucun danger détecté."
-    elif intent == 'temp':
+    elif intent == 'Get Temperature':
         response = f"La température actuelle est de {temperature} °C." if temperature is not None else "Désolé, la température actuelle n'est pas disponible."
-    elif intent == 'hum':
+    elif intent == 'Get Humidity':
         response = f"Le taux d'humidité actuel est de {humidity} %." if humidity is not None else "Désolé, le taux d'humidité actuel n'est pas disponible."
     elif intent == 'Default Welcome Intent':
-        response = "Bonjour ! Comment puis-je vous aider aujourd'hui ?"
+        response = "Bonjour. Je suis votre assistant environnemental. Que puis-je faire pour vous ?"
     else:
-        response = "Désolé, je n'ai pas compris votre demande."
-        response += " Vous pouvez demander : Quel est le niveau de CO ?, Est-ce dangereux ?, Quelle est la température ?, ou Quel est le taux d'humidité ?"
+        response = "Désolé, je n'ai pas compris votre demande. Vous pouvez me demander par exemple : Quel est le niveau de CO ?, Est-ce dangereux ?, Quelle est la température ?, ou Quel est le taux d'humidité ?"
 
-    print(f"Sending response: {response}")  # Debug log
+    print(f"Réponse envoyée : {response}")
     return jsonify({"fulfillmentText": response})
 
 if __name__ == '__main__':
     port = int(os.getenv('PORT', 5000))
     app.run(debug=False, host='0.0.0.0', port=port)
+
