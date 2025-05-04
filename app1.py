@@ -24,7 +24,7 @@ try:
             cred_dict = json.load(f)
         print("Identifiants Firebase chargés depuis firebase_config.json.")
     else:
-        raise ValueError("Aucun identifiant Firebase trouvé (ni variable d'environnement, ni fichier json).")
+        raise ValueError("Aucun identifiant Firebase trouvé.")
 
     cred = credentials.Certificate(cred_dict)
     firebase_admin.initialize_app(cred, {
@@ -34,75 +34,75 @@ try:
     print("Connexion à Firebase réussie.")
 
 except Exception as e:
-    print(f"Erreur d'initialisation Firebase : {str(e)}")
+    print(f"ERREUR Firebase : {str(e)}")
     print(traceback.format_exc())
 
-CO_DANGER_THRESHOLD = 400  # Seuil de danger du CO en ppm
+CO_DANGER_THRESHOLD = 400  # Seuil CO en ppm
 
 @app.route('/')
 def home():
-    return jsonify({"status": "API Flask en fonctionnement."})
+    return jsonify({"status": "API opérationnelle"})
 
 @app.route('/process_command', methods=['POST'])
 def process_command():
     try:
         data = request.get_json()
-        if not data or 'queryResult' not in data or 'intent' not in data['queryResult']:
-            return jsonify({"error": "Requête mal formée (JSON invalide ou intent manquant)."}), 400
+        if not data or 'queryResult' not in data:
+            return jsonify({"error": "Requête invalide"}), 400
     except Exception as e:
-        return jsonify({"error": f"Erreur de parsing JSON : {str(e)}"}), 400
+        return jsonify({"error": f"Erreur JSON : {str(e)}"}), 400
 
-    intent = data['queryResult']['intent']['displayName']
-    print(f"Intent reçu : {intent}")
+    intent = data['queryResult']['intent'].get('displayName', '')
+    print(f"Intent détecté : {intent}")
 
     if db_ref is None:
-        return jsonify({"fulfillmentText": "Erreur : la connexion Firebase a échoué."}), 500
+        return jsonify({"fulfillmentText": "Erreur : Base de données indisponible."}), 500
 
     try:
-        sensor_data_entries = db_ref.get()
-        if not sensor_data_entries:
-            return jsonify({"fulfillmentText": "Désolé, aucune donnée disponible dans Firebase."})
+        # Récupération et tri des données
+        sensor_data = db_ref.get()
+        latest_entry = sorted(
+            [v for v in sensor_data.values() if isinstance(v, dict)],
+            key=lambda x: x.get('timestamp', '1970-01-01'),
+            reverse=True
+        )[0] if sensor_data else None
 
-        entries = []
-        for key, value in sensor_data_entries.items():
-            if isinstance(value, dict) and all(k in value for k in ['mq7', 'temperature', 'humidity', 'timestamp']):
-                entries.append({'key': key, 'data': value})
-
-        if not entries:
-            return jsonify({"fulfillmentText": "Désolé, aucune donnée exploitable trouvée dans Firebase."})
-
-        entries.sort(key=lambda x: x['data'].get('timestamp', '1970-01-01T00:00:00Z'), reverse=True)
-        latest_data = entries[0]['data']
-        print(f"Dernières données : {latest_data}")
+        if not latest_entry:
+            return jsonify({"fulfillmentText": "Aucune donnée disponible."})
 
     except Exception as e:
         print(traceback.format_exc())
-        return jsonify({"fulfillmentText": f"Erreur lors de la récupération des données : {str(e)}"}), 500
+        return jsonify({"fulfillmentText": f"Erreur de données : {str(e)}"}), 500
 
-    co_level = latest_data.get('mq7', 0)
-    temperature = latest_data.get('temperature')
-    humidity = latest_data.get('humidity')
+    # Récupération des valeurs avec fallback
+    co_level = latest_entry.get('mq7', 0)
+    temperature = latest_entry.get('temperature') or latest_entry.get('temp')
+    humidity = latest_entry.get('humidity') or latest_entry.get('hum')
 
+    # Gestion des réponses
     if intent == 'Get CO Level':
-        response = f"Le niveau de CO actuel est de {co_level} ppm."
+        response = f"Niveau de CO : {co_level} ppm."
+    
     elif intent == 'Check Danger':
         if co_level > CO_DANGER_THRESHOLD:
-            response = f"Alerte. Le niveau de CO est de {co_level} ppm, ce qui est dangereux."
+            response = f"DANGER ! Niveau de CO à {co_level} ppm !"  # Sans emoji
         else:
-            response = f"Le niveau de CO est de {co_level} ppm, aucun danger détecté."
+            response = f"Niveau de CO normal : {co_level} ppm."
+    
     elif intent == 'temp':
-        response = f"La température actuelle est de {temperature} °C." if temperature is not None else "Désolé, la température actuelle n'est pas disponible."
+        response = f"Température : {temperature} °C" if temperature else "Donnée indisponible"
+    
     elif intent == 'hum':
-        response = f"Le taux d'humidité actuel est de {humidity} %." if humidity is not None else "Désolé, le taux d'humidité actuel n'est pas disponible."
+        response = f"Humidité : {humidity} %" if humidity else "Donnée indisponible"
+    
     elif intent == 'Default Welcome Intent':
-        response = "Bonjour. Je suis votre assistant environnemental. Que puis-je faire pour vous ?"
+        response = "Bonjour ! Je peux vous fournir les données de CO, température ou humidité."
+    
     else:
-        response = "Désolé, je n'ai pas compris votre demande. Vous pouvez me demander par exemple : Quel est le niveau de CO ?, Est-ce dangereux ?, Quelle est la température ?, ou Quel est le taux d'humidité ?"
+        response = "Requête non reconnue. Essayez avec 'CO', 'température' ou 'humidité'."
 
-    print(f"Réponse envoyée : {response}")
     return jsonify({"fulfillmentText": response})
 
 if __name__ == '__main__':
     port = int(os.getenv('PORT', 5000))
     app.run(debug=False, host='0.0.0.0', port=port)
-
