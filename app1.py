@@ -90,7 +90,7 @@ def process_command():
             response = f"Alerte. Le niveau de CO est de {co_level} ppm, ce qui est dangereux."
         else:
             response = f"Le niveau de CO est de {co_level} ppm, aucun danger détecté."
-    elif intent == 'Temp':
+    elif intent == 'temp':
         response = f"La température actuelle est de {temperature} °C." if temperature is not None else "Désolé, la température actuelle n'est pas disponible."
     elif intent == 'hum':
         response = f"Le taux d'humidité actuel est de {humidity} %." if humidity is not None else "Désolé, le taux d'humidité actuel n'est pas disponible."
@@ -105,3 +105,4 @@ def process_command():
 if __name__ == '__main__':
     port = int(os.getenv('PORT', 5000))
     app.run(debug=False, host='0.0.0.0', port=port)
+
