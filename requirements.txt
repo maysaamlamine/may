@@ -1,0 +1,12 @@
+flask
+pyrebase4
+google-cloud-firestore
+dialogflow
+Flask==2.3.3
+firebase-admin==6.5.0
+gunicorn==23.0.0
+flask
+gunicorn
+firebase-admin
+requests
+flask_cors
