@@ -36,70 +36,55 @@ def home():
 @app.route('/process_command', methods=['POST'])
 def process_command():
     print("Received request at /process_command")
-    print("Request headers:", request.headers)
     try:
         data = request.get_json()
         if data is None:
-            print("Invalid JSON payload received.")
             return jsonify({'fulfillmentText': "Erreur: Payload JSON invalide."}), 400
-        print("Request body:", data)
     except Exception as e:
-        print(f"Failed to parse JSON: {str(e)}")
         return jsonify({'fulfillmentText': f"Erreur: Impossible de parser le JSON: {str(e)}"}), 400
 
     if 'queryResult' not in data or 'intent' not in data['queryResult']:
-        print("Missing queryResult or intent in request body.")
         return jsonify({'fulfillmentText': "Erreur: Requête mal formée, queryResult ou intent manquant."}), 400
 
     intent = data['queryResult']['intent']['displayName']
     print(f"Processing intent: {intent}")
 
     if intent == 'Default_Welcome_Intent':
-        response = "Bonjour ! Je suis ici pour vous aider à surveiller les niveaux de CO, GPL, température et humidité. Posez-moi une question comme 'Quel est le niveau de CO ?', 'Quel est le niveau de gaz GPL ?' ou 'Est-ce dangereux ?'."
-        print(f"Returning response: {response}")
+        response = "Bonjour ! Je suis ici pour vous aider à surveiller les niveaux de CO, GPL, température et humidité. Posez-moi une question comme 'Quel est le niveau de CO ?' ou 'Est-ce dangereux ?'."
         return jsonify({'fulfillmentText': response}), 200
 
     if db_ref is None:
-        print("Realtime Database not initialized.")
         return jsonify({'fulfillmentText': "Erreur: Base de données non initialisée."}), 500
 
     try:
         sensor_data_entries = db_ref.get()
         if not sensor_data_entries:
-            print("No data found at 'sensor_data' path.")
             return jsonify({'fulfillmentText': "Désolé, je n'ai pas pu récupérer les données des capteurs."}), 200
-
-        print(f"Full sensor data entries: {sensor_data_entries}")
 
         entries = []
         for key, value in sensor_data_entries.items():
             if not isinstance(value, dict):
-                print(f"Skipping entry {key}: value is not a dictionary")
                 continue
-
             if intent == 'temp' and 'temperature' in value:
                 value['timestamp'] = value.get('timestamp', '1970-01-01T00:00:00Z')
                 entries.append({'key': key, 'data': value})
             elif intent == 'hum' and 'humidity' in value:
                 value['timestamp'] = value.get('timestamp', '1970-01-01T00:00:00Z')
                 entries.append({'key': key, 'data': value})
-            elif intent == 'gpl' and 'mq5' in value:
-                value['timestamp'] = value.get('timestamp', '1970-01-01T00:00:00Z')
-                entries.append({'key': key, 'data': value})
             elif intent in ['get_co_level', 'check_danger'] and 'mq7' in value:
                 value['timestamp'] = value.get('timestamp', '1970-01-01T00:00:00Z')
                 entries.append({'key': key, 'data': value})
-            else:
-                print(f"Skipping entry {key}: missing required field for intent {intent}")
+            elif intent == 'gpl' and 'mq5' in value:
+                value['timestamp'] = value.get('timestamp', '1970-01-01T00:00:00Z')
+                entries.append({'key': key, 'data': value})
 
         if not entries:
-            print("No valid entries found with required fields.")
             return jsonify({'fulfillmentText': "Désolé, je n'ai pas pu récupérer les données des capteurs."}), 200
 
         entries.sort(key=lambda x: x['data']['timestamp'], reverse=True)
         sensor_data = entries[0]['data']
-        print(f"Latest sensor data: {sensor_data}")
 
+        # Recherche alternative si données manquantes
         if intent == 'temp' and sensor_data.get('temperature') is None:
             for entry in entries[1:]:
                 if entry['data'].get('temperature') is not None:
@@ -117,19 +102,13 @@ def process_command():
                     break
 
     except Exception as e:
-        print(f"Failed to fetch data from Realtime Database: {str(e)}")
         print(traceback.format_exc())
         return jsonify({'fulfillmentText': f"Erreur: Impossible de récupérer les données: {str(e)}"}), 500
 
     co_level = sensor_data.get('mq7', 0)
+    gpl_level = sensor_data.get('mq5', 0)
     temperature = sensor_data.get('temperature')
     humidity = sensor_data.get('humidity')
-    gpl_level = sensor_data.get('mq5')
-
-    print(f"CO level (mq7): {co_level}")
-    print(f"Temperature: {temperature}")
-    print(f"Humidity: {humidity}")
-    print(f"GPL level (mq5): {gpl_level}")
 
     if intent == 'get_co_level':
         response = f"Le niveau de CO actuel est de {co_level} ppm."
@@ -139,24 +118,14 @@ def process_command():
         else:
             response = f"Le niveau de CO est de {co_level} ppm, aucun danger détecté."
     elif intent == 'temp':
-        if temperature is not None:
-            response = f"La température actuelle est de {temperature}°C."
-        else:
-            response = "Désolé, la température n'est pas disponible pour le moment."
+        response = f"La température actuelle est de {temperature}°C." if temperature is not None else "Désolé, la température n'est pas disponible pour le moment."
     elif intent == 'hum':
-        if humidity is not None:
-            response = f"Le taux d'humidité actuel est de {humidity}%."
-        else:
-            response = "Désolé, l'humidité n'est pas disponible pour le moment."
+        response = f"Le taux d'humidité actuel est de {humidity}%." if humidity is not None else "Désolé, l'humidité n'est pas disponible pour le moment."
     elif intent == 'gpl':
-        if gpl_level is not None:
-            response = f"Le niveau actuel de gaz GPL est de {gpl_level} ppm."
-        else:
-            response = "Désolé, le niveau de gaz GPL n'est pas disponible pour le moment."
+        response = f"Le niveau de gaz de pétrole liquéfié (GPL) est de {gpl_level} ppm." if gpl_level is not None else "Désolé, le niveau de GPL n'est pas disponible."
     else:
         response = "Désolé, je n'ai pas compris votre demande."
 
-    print(f"Returning response: {response}")
     return jsonify({'fulfillmentText': response}), 200
 
 if __name__ == '__main__':
