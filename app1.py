@@ -9,101 +9,80 @@ import json
 app = Flask(__name__)
 CORS(app)
 
-# Initialize Firebase Realtime Database
+# Global variable for Firebase reference
+db_ref = None
+
+# Chargement des identifiants Firebase
 try:
     firebase_credentials = os.getenv("FIREBASE_CREDENTIALS")
-    if not firebase_credentials:
-        raise ValueError("FIREBASE_CREDENTIALS environment variable not set")
 
-    cred_dict = json.loads(firebase_credentials)
+    if firebase_credentials:
+        cred_dict = json.loads(firebase_credentials)
+        print("Identifiants Firebase chargés depuis la variable d'environnement.")
+    elif os.path.exists("firebase_config.json"):
+        with open("firebase_config.json") as f:
+            cred_dict = json.load(f)
+        print("Identifiants Firebase chargés depuis firebase_config.json.")
+    else:
+        raise ValueError("Aucun identifiant Firebase trouvé (ni variable d'environnement, ni fichier json).")
+
     cred = credentials.Certificate(cred_dict)
     firebase_admin.initialize_app(cred, {
         'databaseURL': 'https://projet-fin-d-etude-4632f-default-rtdb.firebaseio.com/'
     })
     db_ref = db.reference('sensor_data')
-    print("Firebase Realtime Database initialized successfully.")
-except Exception as e:
-    print(f"Failed to initialize Firebase: {str(e)}")
-    db_ref = None
+    print("Connexion à Firebase réussie.")
 
-# CO danger threshold (in ppm)
-CO_DANGER_THRESHOLD = 400
+except Exception as e:
+    print(f"❌ Erreur d'initialisation Firebase : {str(e)}")
+    print(traceback.format_exc())
+
+CO_DANGER_THRESHOLD = 400  # seuil de danger CO en ppm
 
 @app.route('/')
 def home():
-    return "Flask app is running!"
+    return jsonify({"status": "✅ API Flask en fonctionnement."})
 
 @app.route('/process_command', methods=['POST'])
 def process_command():
-    print("Received request at /process_command")
-    print("Request headers:", request.headers)
     try:
         data = request.get_json()
-        if data is None:
-            print("Invalid JSON payload received.")
-            return jsonify({'fulfillmentText': "Erreur: Payload JSON invalide."}), 400
-        print("Request body:", data)
+        if not data or 'queryResult' not in data or 'intent' not in data['queryResult']:
+            return jsonify({"error": "Requête mal formée (JSON invalide ou intent manquant)."}), 400
     except Exception as e:
-        print(f"Failed to parse JSON: {str(e)}")
-        return jsonify({'fulfillmentText': f"Erreur: Impossible de parser le JSON: {str(e)}"}), 400
-
-    # Check if queryResult and intent are present
-    if 'queryResult' not in data or 'intent' not in data['queryResult']:
-        print("Missing queryResult or intent in request body.")
-        return jsonify({'fulfillmentText': "Erreur: Requête mal formée, queryResult ou intent manquant."}), 400
+        return jsonify({"error": f"Erreur de parsing JSON : {str(e)}"}), 400
 
     intent = data['queryResult']['intent']['displayName']
-    print(f"Processing intent: {intent}")
+    print(f"Received intent: {intent}")  # Debug log
 
-    # Handle Default Welcome Intent
-    if intent == 'Default Welcome Intent':
-        response = "Bonjour ! Je suis ici pour vous aider à surveiller les niveaux de CO, la température et l'humidité. Posez-moi une question comme 'Quel est le niveau de CO ?', 'Quelle est la température ?' ou 'Quel est le taux d'humidité ?'."
-        print(f"Returning response: {response}")
-        return jsonify({
-            'fulfillmentText': response
-        }), 200
-
-    # For other intents, proceed with Firebase data fetching
     if db_ref is None:
-        print("Realtime Database not initialized.")
-        return jsonify({'fulfillmentText': "Erreur: Base de données non initialisée."}), 500
+        return jsonify({"fulfillmentText": "Erreur : la connexion Firebase a échoué."}), 500
 
     try:
-        # Fetch all sensor data entries
         sensor_data_entries = db_ref.get()
         if not sensor_data_entries:
-            print("No data found at 'sensor_data' path.")
-            return jsonify({'fulfillmentText': "Désolé, je n'ai pas pu récupérer les données des capteurs."}), 200
+            return jsonify({"fulfillmentText": "Désolé, aucune donnée disponible dans Firebase."})
 
-        print(f"Retrieved sensor data: {sensor_data_entries}")
-
-        # Convert to a list of entries with timestamps
         entries = []
         for key, value in sensor_data_entries.items():
-            if not isinstance(value, dict):
-                print(f"Skipping entry {key}: value is not a dictionary")
-                continue
-            if 'mq5' in value and 'mq7' in value:
-                value['timestamp'] = value.get('timestamp', '1970-01-01T00:00:00Z')
+            if isinstance(value, dict) and all(k in value for k in ['mq7', 'temperature', 'humidity', 'timestamp']):
                 entries.append({'key': key, 'data': value})
-            else:
-                print(f"Skipping entry {key}: missing required fields (mq5 or mq7)")
 
         if not entries:
-            print("No valid entries found with required fields.")
-            return jsonify({'fulfillmentText': "Désolé, je n'ai pas pu récupérer les données des capteurs."}), 200
+            return jsonify({"fulfillmentText": "Désolé, aucune donnée exploitable trouvée dans Firebase."})
 
-        entries.sort(key=lambda x: x['data']['timestamp'], reverse=True)
-        sensor_data = entries[0]['data']
-        print(f"Latest sensor data: {sensor_data}")
+        # Sort by timestamp (handle missing or invalid timestamps)
+        entries.sort(key=lambda x: x['data'].get('timestamp', '1970-01-01T00:00:00Z'), reverse=True)
+        latest_data = entries[0]['data']
+        print(f"Latest data: {latest_data}")  # Debug log
+
     except Exception as e:
-        print(f"Failed to fetch data from Realtime Database: {str(e)}")
         print(traceback.format_exc())
-        return jsonify({'fulfillmentText': f"Erreur: Impossible de récupérer les données: {str(e)}"}), 500
+        return jsonify({"fulfillmentText": f"Erreur lors de la récupération des données : {str(e)}"}), 500
 
-    co_level = sensor_data.get('mq7', 0)
-    temperature = sensor_data.get('temperature', None)
-    humidity = sensor_data.get('humidity', None)
+    co_level = latest_data.get('mq7', 0)
+    temperature = latest_data.get('temperature')
+    humidity = latest_data.get('humidity')
 
     if intent == 'get_co_level':
         response = f"Le niveau de CO actuel est de {co_level} ppm."
@@ -113,20 +92,17 @@ def process_command():
         else:
             response = f"Le niveau de CO est de {co_level} ppm, aucun danger détecté."
     elif intent == 'temp':
-        if temperature is not None:
-            response = f"La température actuelle est de {temperature} °C."
-        else:
-            response = "Désolé, je n'ai pas pu obtenir la température actuelle."
+        response = f"La température actuelle est de {temperature} °C." if temperature is not None else "Désolé, la température actuelle n'est pas disponible."
     elif intent == 'hum':
-        if humidity is not None:
-            response = f"Le taux d'humidité actuel est de {humidity} %."
-        else:
-            response = "Désolé, je n'ai pas pu obtenir le taux d'humidité actuel."
+        response = f"Le taux d'humidité actuel est de {humidity} %." if humidity is not None else "Désolé, le taux d'humidité actuel n'est pas disponible."
+    elif intent == 'Default Welcome Intent':
+        response = "Bonjour ! Comment puis-je vous aider aujourd'hui ?"
     else:
         response = "Désolé, je n'ai pas compris votre demande."
+        response += " Vous pouvez demander : Quel est le niveau de CO ?, Est-ce dangereux ?, Quelle est la température ?, ou Quel est le taux d'humidité ?"
 
-    print(f"Returning response: {response}")
-    return jsonify({'fulfillmentText': response}), 200
+    print(f"Sending response: {response}")  # Debug log
+    return jsonify({"fulfillmentText": response})
 
 if __name__ == '__main__':
     port = int(os.getenv('PORT', 5000))
