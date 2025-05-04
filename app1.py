@@ -73,9 +73,7 @@ def process_command():
         sensor_data_entries = db_ref.get()
         if not sensor_data_entries:
             print("No data found at 'sensor_data' path.")
-            return jsonify({
-                'fulfillmentText': "Désolé, je n'ai pas pu récupérer les données des capteurs."
-            }), 200
+            return jsonify({'fulfillmentText': "Désolé, je n'ai pas pu récupérer les données des capteurs."}), 200
 
         print(f"Retrieved sensor data: {sensor_data_entries}")
 
@@ -93,9 +91,7 @@ def process_command():
 
         if not entries:
             print("No valid entries found with required fields.")
-            return jsonify({
-                'fulfillmentText': "Désolé, je n'ai pas pu récupérer les données des capteurs."
-            }), 200
+            return jsonify({'fulfillmentText': "Désolé, je n'ai pas pu récupérer les données des capteurs."}), 200
 
         entries.sort(key=lambda x: x['data']['timestamp'], reverse=True)
         sensor_data = entries[0]['data']
@@ -106,7 +102,8 @@ def process_command():
         return jsonify({'fulfillmentText': f"Erreur: Impossible de récupérer les données: {str(e)}"}), 500
 
     co_level = sensor_data.get('mq7', 0)
-    print(f"CO level (mq7): {co_level}")
+    temperature = sensor_data.get('temperature', None)
+    humidity = sensor_data.get('humidity', None)
 
     if intent == 'get_co_level':
         response = f"Le niveau de CO actuel est de {co_level} ppm."
@@ -115,13 +112,21 @@ def process_command():
             response = f"Alerte ! Le niveau de CO est de {co_level} ppm, ce qui est dangereux."
         else:
             response = f"Le niveau de CO est de {co_level} ppm, aucun danger détecté."
+    elif intent == 'temp':
+        if temperature is not None:
+            response = f"La température actuelle est de {temperature} °C."
+        else:
+            response = "Désolé, je n'ai pas pu obtenir la température actuelle."
+    elif intent == 'hum':
+        if humidity is not None:
+            response = f"Le taux d'humidité actuel est de {humidity} %."
+        else:
+            response = "Désolé, je n'ai pas pu obtenir le taux d'humidité actuel."
     else:
         response = "Désolé, je n'ai pas compris votre demande."
 
     print(f"Returning response: {response}")
-    return jsonify({
-        'fulfillmentText': response
-    }), 200
+    return jsonify({'fulfillmentText': response}), 200
 
 if __name__ == '__main__':
     port = int(os.getenv('PORT', 5000))
