@@ -57,9 +57,11 @@ def process_command():
 
     # Handle Default Welcome Intent
     if intent == 'Default_Welcome_Intent':
-        response = "Bonjour ! Je suis ici pour vous aider à surveiller les niveaux de CO, température et humidité. Posez-moi une question comme 'Quel est le niveau de CO ?' ou 'Est-ce dangereux ?'."
+        response = "Bonjour ! Je suis ici pour vous aider à surveiller les niveaux de CO. Posez-moi une question comme 'Quel est le niveau de CO ?' ou 'Est-ce dangereux ?'."
         print(f"Returning response: {response}")
-        return jsonify({'fulfillmentText': response}), 200
+        return jsonify({
+            'fulfillmentText': response
+        }), 200
 
     # For other intents, proceed with Firebase data fetching
     if db_ref is None:
@@ -71,70 +73,40 @@ def process_command():
         sensor_data_entries = db_ref.get()
         if not sensor_data_entries:
             print("No data found at 'sensor_data' path.")
-            return jsonify({'fulfillmentText': "Désolé, je n'ai pas pu récupérer les données des capteurs."}), 200
+            return jsonify({
+                'fulfillmentText': "Désolé, je n'ai pas pu récupérer les données des capteurs."
+            }), 200
 
-        print(f"Full sensor data entries: {sensor_data_entries}")
+        print(f"Retrieved sensor data: {sensor_data_entries}")
 
-        # Convert to list of entries with timestamps
+        # Convert to a list of entries with timestamps
         entries = []
         for key, value in sensor_data_entries.items():
             if not isinstance(value, dict):
                 print(f"Skipping entry {key}: value is not a dictionary")
                 continue
-            # For 'temp' and 'hum' intents, only require 'temperature' or 'humidity'
-            if intent in ['temp', 'hum']:
-                if 'temperature' in value or 'humidity' in value:
-                    value['timestamp'] = value.get('timestamp', '1970-01-01T00:00:00Z')
-                    entries.append({'key': key, 'data': value})
-                else:
-                    print(f"Skipping entry {key}: missing required fields for {intent}")
-            # For CO-related intents, require 'mq7'
-            elif intent in ['get_co_level', 'check_danger']:
-                if 'mq7' in value:
-                    value['timestamp'] = value.get('timestamp', '1970-01-01T00:00:00Z')
-                    entries.append({'key': key, 'data': value})
-                else:
-                    print(f"Skipping entry {key}: missing required field (mq7)")
+            if 'mq5' in value and 'mq7' in value:
+                value['timestamp'] = value.get('timestamp', '1970-01-01T00:00:00Z')
+                entries.append({'key': key, 'data': value})
             else:
-                print(f"Skipping entry {key}: unrecognized intent {intent}")
+                print(f"Skipping entry {key}: missing required fields (mq5 or mq7)")
 
         if not entries:
             print("No valid entries found with required fields.")
-            return jsonify({'fulfillmentText': "Désolé, je n'ai pas pu récupérer les données des capteurs."}), 200
+            return jsonify({
+                'fulfillmentText': "Désolé, je n'ai pas pu récupérer les données des capteurs."
+            }), 200
 
-        # Sort by timestamp to get the latest entry
         entries.sort(key=lambda x: x['data']['timestamp'], reverse=True)
         sensor_data = entries[0]['data']
         print(f"Latest sensor data: {sensor_data}")
-
-        # For 'temp' and 'hum', if latest entry lacks the required field, search others
-        if intent == 'temp' and sensor_data.get('temperature') is None:
-            print("Latest entry lacks temperature, searching other entries")
-            for entry in entries[1:]:
-                if entry['data'].get('temperature') is not None:
-                    sensor_data = entry['data']
-                    print(f"Found temperature in older entry: {sensor_data}")
-                    break
-        elif intent == 'hum' and sensor_data.get('humidity') is None:
-            print("Latest entry lacks humidity, searching other entries")
-            for entry in entries[1:]:
-                if entry['data'].get('humidity') is not None:
-                    sensor_data = entry['data']
-                    print(f"Found humidity in older entry: {sensor_data}")
-                    break
-
     except Exception as e:
         print(f"Failed to fetch data from Realtime Database: {str(e)}")
         print(traceback.format_exc())
         return jsonify({'fulfillmentText': f"Erreur: Impossible de récupérer les données: {str(e)}"}), 500
 
     co_level = sensor_data.get('mq7', 0)
-    temperature = sensor_data.get('temperature')
-    humidity = sensor_data.get('humidity')
-
     print(f"CO level (mq7): {co_level}")
-    print(f"Temperature: {temperature}")
-    print(f"Humidity: {humidity}")
 
     if intent == 'get_co_level':
         response = f"Le niveau de CO actuel est de {co_level} ppm."
@@ -143,21 +115,13 @@ def process_command():
             response = f"Alerte ! Le niveau de CO est de {co_level} ppm, ce qui est dangereux."
         else:
             response = f"Le niveau de CO est de {co_level} ppm, aucun danger détecté."
-    elif intent == 'temp':
-        if temperature is not None:
-            response = f"La température actuelle est de {temperature}°C."
-        else:
-            response = "Désolé, la température n'est pas disponible pour le moment."
-    elif intent == 'hum':
-        if humidity is not None:
-            response = f"Le taux d'humidité actuel est de {humidity}%."
-        else:
-            response = "Désolé, l'humidité n'est pas disponible pour le moment."
     else:
         response = "Désolé, je n'ai pas compris votre demande."
 
     print(f"Returning response: {response}")
-    return jsonify({'fulfillmentText': response}), 200
+    return jsonify({
+        'fulfillmentText': response
+    }), 200
 
 if __name__ == '__main__':
     port = int(os.getenv('PORT', 5000))
