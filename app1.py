@@ -9,7 +9,7 @@ import json
 app = Flask(__name__)
 CORS(app)
 
-# Initialize Firebase Realtime Database
+# Initialisation de la base de données Firebase
 try:
     firebase_credentials = os.getenv("FIREBASE_CREDENTIALS")
     if not firebase_credentials:
@@ -26,7 +26,6 @@ except Exception as e:
     print(f"Failed to initialize Firebase: {str(e)}")
     db_ref = None
 
-# CO danger threshold (in ppm)
 CO_DANGER_THRESHOLD = 400
 
 @app.route('/')
@@ -35,7 +34,8 @@ def home():
 
 @app.route('/process_command', methods=['POST'])
 def process_command():
-    print("Received request at /process_command")
+    print("Requête reçue sur /process_command")
+
     try:
         data = request.get_json()
         if data is None:
@@ -47,10 +47,10 @@ def process_command():
         return jsonify({'fulfillmentText': "Erreur: Requête mal formée, queryResult ou intent manquant."}), 400
 
     intent = data['queryResult']['intent']['displayName']
-    print(f"Processing intent: {intent}")
+    print(f"Intent détectée : {intent}")
 
     if intent == 'Default_Welcome_Intent':
-        response = "Bonjour ! Je suis ici pour vous aider à surveiller les niveaux de CO, GPL, température et humidité. Posez-moi une question comme 'Quel est le niveau de CO ?' ou 'Est-ce dangereux ?'."
+        response = "Bonjour ! Je suis ici pour vous aider à surveiller les niveaux de CO, GPL, température et humidité. Posez-moi une question comme 'Quel est le niveau de CO ?' ou 'Quel est le niveau de GPL ?'."
         return jsonify({'fulfillmentText': response}), 200
 
     if db_ref is None:
@@ -65,6 +65,7 @@ def process_command():
         for key, value in sensor_data_entries.items():
             if not isinstance(value, dict):
                 continue
+
             if intent == 'temp' and 'temperature' in value:
                 value['timestamp'] = value.get('timestamp', '1970-01-01T00:00:00Z')
                 entries.append({'key': key, 'data': value})
@@ -81,10 +82,11 @@ def process_command():
         if not entries:
             return jsonify({'fulfillmentText': "Désolé, je n'ai pas pu récupérer les données des capteurs."}), 200
 
+        # Trier les entrées par date
         entries.sort(key=lambda x: x['data']['timestamp'], reverse=True)
         sensor_data = entries[0]['data']
 
-        # Recherche alternative si données manquantes
+        # Recherche alternative si valeur manquante
         if intent == 'temp' and sensor_data.get('temperature') is None:
             for entry in entries[1:]:
                 if entry['data'].get('temperature') is not None:
@@ -105,18 +107,22 @@ def process_command():
         print(traceback.format_exc())
         return jsonify({'fulfillmentText': f"Erreur: Impossible de récupérer les données: {str(e)}"}), 500
 
-    co_level = sensor_data.get('mq7', 0)
-    gpl_level = sensor_data.get('mq5', 0)
+    # Extraction des données
+    co_level = sensor_data.get('mq7')
+    gpl_level = sensor_data.get('mq5')
     temperature = sensor_data.get('temperature')
     humidity = sensor_data.get('humidity')
 
+    # Génération de la réponse
     if intent == 'get_co_level':
-        response = f"Le niveau de CO actuel est de {co_level} ppm."
+        response = f"Le niveau de CO actuel est de {co_level} ppm." if co_level is not None else "Désolé, la valeur de CO n'est pas disponible."
     elif intent == 'check_danger':
-        if co_level > CO_DANGER_THRESHOLD:
+        if co_level is not None and co_level > CO_DANGER_THRESHOLD:
             response = f"Alerte ! Le niveau de CO est de {co_level} ppm, ce qui est dangereux."
-        else:
+        elif co_level is not None:
             response = f"Le niveau de CO est de {co_level} ppm, aucun danger détecté."
+        else:
+            response = "Désolé, la valeur de CO n'est pas disponible pour l'évaluation du danger."
     elif intent == 'temp':
         response = f"La température actuelle est de {temperature}°C." if temperature is not None else "Désolé, la température n'est pas disponible pour le moment."
     elif intent == 'hum':
@@ -131,4 +137,5 @@ def process_command():
 if __name__ == '__main__':
     port = int(os.getenv('PORT', 5000))
     app.run(debug=False, host='0.0.0.0', port=port)
+
 
