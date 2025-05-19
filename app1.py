@@ -18,7 +18,7 @@ try:
     cred_dict = json.loads(firebase_credentials)
     cred = credentials.Certificate(cred_dict)
     firebase_admin.initialize_app(cred, {
-        'databaseURL': 'https://projet-fin-d-etude-4632f-default-rtdb.firebaseio.com/'
+        'databaseURL': 'https://detectiongaz-2d2aa-default-rtdb.firebaseio.com/'
     })
     db_ref = db.reference('sensor_data')
     print("Firebase Realtime Database initialized successfully.")
